@@ -8,6 +8,7 @@ workflows.
 
 __version__ = "0.1.0"
 
+from .chunker import MarkdownChunker, Section
 from .clustering import cluster_files
 from .consolidator import ConsolidationResult, consolidate
 from .inventory import analyze_file, inventory_directory
@@ -23,4 +24,6 @@ __all__ = [
     "analyze_relationships",
     "cluster_files",
     "synthesize_cluster",
+    "MarkdownChunker",
+    "Section",
 ]
