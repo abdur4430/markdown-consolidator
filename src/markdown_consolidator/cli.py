@@ -9,7 +9,6 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import NoReturn
 
 
 def main() -> int:
@@ -67,19 +66,24 @@ Examples:
         help='Suppress output'
     )
     parser.add_argument(
+        '--subfolders',
+        action='store_true',
+        help='Preserve subfolder structure and copy non-markdown files'
+    )
+    parser.add_argument(
         '--version', '-V',
         action='version',
         version='%(prog)s 0.1.0'
     )
-    
+
     args = parser.parse_args()
-    
+
     if not args.source.is_dir():
         print(f"Error: {args.source} is not a directory", file=sys.stderr)
         return 1
-    
+
     from .consolidator import consolidate
-    
+
     if not args.quiet:
         print("╔══════════════════════════════════════════════════════════╗")
         print("║  Markdown Consolidator                                    ║")
@@ -89,8 +93,10 @@ Examples:
         print(f"  Strategy:  {args.strategy}")
         print(f"  Threshold: {args.threshold}")
         print(f"  Method:    {args.method}")
+        if args.subfolders:
+            print("  Subfolders: enabled")
         print()
-    
+
     try:
         result = consolidate(
             source_dir=args.source,
@@ -99,21 +105,25 @@ Examples:
             threshold=args.threshold,
             method=args.method,
             exclude_patterns=args.exclude,
-            keep_work_files=args.keep_work
+            keep_work_files=args.keep_work,
+            preserve_subfolders=args.subfolders,
         )
-        
+
         if not args.quiet:
-            print(f"✓ Consolidation complete!")
+            print("✓ Consolidation complete!")
             print(f"  Files analyzed:    {result['files_analyzed']}")
             print(f"  Clusters created:  {result['clusters_created']}")
             print(f"  Files created:     {result['files_created']}")
             print(f"  Coverage:          {result['coverage']}%")
-            
+
+            if result.get('non_markdown_copied', 0) > 0:
+                print(f"  Files copied:      {result['non_markdown_copied']}")
+
             if result['validation'].get('broken_links'):
                 print(f"  ⚠️  Broken links:   {len(result['validation']['broken_links'])}")
-        
+
         return 0
-        
+
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -140,18 +150,18 @@ def inventory_cmd() -> int:
     )
     parser.add_argument('--exclude', '-e', nargs='*', default=[])
     parser.add_argument('--pretty', '-p', action='store_true')
-    
+
     args = parser.parse_args()
-    
+
     if not args.directory.is_dir():
         print(f"Error: {args.directory} is not a directory", file=sys.stderr)
         return 1
-    
+
     from .inventory import inventory_directory
-    
+
     print(f"Analyzing markdown files in {args.directory}...")
     files = inventory_directory(directory=args.directory, exclude_patterns=args.exclude)
-    
+
     output = {
         'source_directory': str(args.directory.absolute()),
         'analyzed_at': datetime.now().isoformat(),
@@ -159,10 +169,10 @@ def inventory_cmd() -> int:
         'total_words': sum(f.get('word_count', 0) for f in files if 'error' not in f),
         'files': files
     }
-    
+
     indent = 2 if args.pretty else None
     args.output.write_text(json.dumps(output, indent=indent, default=str))
-    
+
     print(f"Inventoried {len(files)} files → {args.output}")
     return 0
 
@@ -188,20 +198,20 @@ def analyze_cmd() -> int:
     )
     parser.add_argument('--threshold', '-t', type=float, default=0.3)
     parser.add_argument('--pretty', '-p', action='store_true')
-    
+
     args = parser.parse_args()
-    
+
     if not args.inventory.exists():
         print(f"Error: {args.inventory} not found", file=sys.stderr)
         return 1
-    
+
     from .relationships import analyze_relationships
-    
+
     inventory = json.loads(args.inventory.read_text())
-    
+
     print("Analyzing relationships...")
     relationships = analyze_relationships(inventory=inventory, threshold=args.threshold)
-    
+
     output = {
         'analyzed_at': datetime.now().isoformat(),
         'source_inventory': str(args.inventory),
@@ -215,10 +225,10 @@ def analyze_cmd() -> int:
             'potential_conflicts': len(relationships['potential_conflicts'])
         }
     }
-    
+
     indent = 2 if args.pretty else None
     args.output.write_text(json.dumps(output, indent=indent, default=str))
-    
+
     print(f"Analysis complete → {args.output}")
     print(f"  Similar pairs: {output['summary']['similar_pairs']}")
     print(f"  Conflicts: {output['summary']['potential_conflicts']}")
@@ -251,33 +261,33 @@ def cluster_cmd() -> int:
     )
     parser.add_argument('--threshold', '-t', type=float, default=0.6)
     parser.add_argument('--pretty', '-p', action='store_true')
-    
+
     args = parser.parse_args()
-    
+
     if not args.relationships.exists():
         print(f"Error: {args.relationships} not found", file=sys.stderr)
         return 1
-    
+
     from .clustering import cluster_files
-    
+
     relationships = json.loads(args.relationships.read_text())
-    
+
     print(f"Clustering with method: {args.method}...")
     clusters = cluster_files(relationships=relationships, method=args.method, threshold=args.threshold)
-    
+
     output = {
         'clustered_at': datetime.now().isoformat(),
         'source_relationships': str(args.relationships),
         'method': args.method,
         'threshold': args.threshold,
         'cluster_count': len(clusters),
-        'total_files_clustered': len(set(f for c in clusters for f in c['files'])),
+        'total_files_clustered': len({f for c in clusters for f in c['files']}),
         'clusters': clusters
     }
-    
+
     indent = 2 if args.pretty else None
     args.output.write_text(json.dumps(output, indent=indent, default=str))
-    
+
     print(f"Clustering complete → {args.output}")
     print(f"  Clusters: {len(clusters)}")
     return 0
@@ -307,30 +317,30 @@ def synthesize_cmd() -> int:
         choices=['authority', 'comprehensive', 'canonical'],
         default='authority'
     )
-    
+
     args = parser.parse_args()
-    
+
     if not args.clusters.exists():
         print(f"Error: {args.clusters} not found", file=sys.stderr)
         return 1
-    
+
     from .synthesis import synthesize_all
-    
+
     clusters_data = json.loads(args.clusters.read_text())
     args.output.mkdir(parents=True, exist_ok=True)
-    
+
     print(f"Synthesizing with strategy: {args.strategy}...")
     results = synthesize_all(
         clusters=clusters_data['clusters'],
         output_dir=args.output,
         strategy=args.strategy,
     )
-    
+
     print(f"Synthesis complete → {args.output}")
     print(f"  Files created: {len(results)}")
     for r in results:
         print(f"    → {Path(r['output_file']).name}")
-    
+
     return 0
 
 

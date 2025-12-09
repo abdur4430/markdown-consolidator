@@ -100,20 +100,20 @@ def extract_links(*, content: str) -> dict[str, list[Any]]:
     """
     # Wikilinks: [[target]] or [[target|display]]
     wikilinks = re.findall(r'\[\[([^\]|]+)(?:\|[^\]]+)?\]\]', content)
-    
+
     # Standard markdown links: [text](url)
     md_links = re.findall(r'\[([^\]]+)\]\(([^)]+)\)', content)
-    
+
     internal: list[str] = list(set(wikilinks))
     external: list[dict[str, str]] = []
-    
+
     for text, url in md_links:
         if url.startswith(('http://', 'https://')):
             external.append({'text': text, 'url': url})
         elif not url.startswith('#'):
             # Internal markdown link
             internal.append(url.split('#')[0])
-    
+
     return {
         'internal': list(set(internal)),
         'external': external
@@ -158,17 +158,17 @@ def extract_sections(*, content: str, headers: list[dict[str, Any]]) -> list[dic
     """
     lines = content.split('\n')
     sections = []
-    
+
     for i, header in enumerate(headers):
         start_line = header['line']
         if i + 1 < len(headers):
             end_line = headers[i + 1]['line'] - 1
         else:
             end_line = len(lines)
-        
+
         section_content = '\n'.join(lines[start_line:end_line])
         word_count = len(section_content.split())
-        
+
         sections.append({
             'heading': header['text'],
             'level': header['level'],
@@ -177,7 +177,7 @@ def extract_sections(*, content: str, headers: list[dict[str, Any]]) -> list[dic
             'word_count': word_count,
             'fingerprint': compute_fingerprint(content=section_content),
         })
-    
+
     return sections
 
 
@@ -199,20 +199,20 @@ def analyze_file(*, filepath: Path) -> FileInventory:
         content = filepath.read_text(encoding='utf-8')
     except Exception as e:
         return {'error': str(e), 'path': str(filepath)}
-    
+
     stat = filepath.stat()
     frontmatter, body = extract_frontmatter(content=content)
     headers = extract_headers(content=body)
     links = extract_links(content=body)
     sections = extract_sections(content=body, headers=headers)
-    
+
     # Get modification date from frontmatter if available
     modified_frontmatter = None
     for key in ['modified', 'updated', 'last_modified', 'date']:
         if key in frontmatter:
             modified_frontmatter = str(frontmatter[key])
             break
-    
+
     return {
         'path': str(filepath),
         'filename': filepath.name,
@@ -252,7 +252,7 @@ def inventory_directory(
     """
     exclude_patterns = exclude_patterns or []
     files: list[FileInventory] = []
-    
+
     for filepath in directory.rglob('*.md'):
         # Check exclusion patterns
         rel_path = str(filepath.relative_to(directory))
@@ -261,8 +261,8 @@ def inventory_directory(
             if re.match(pattern.replace('*', '.*'), rel_path):
                 excluded = True
                 break
-        
+
         if not excluded:
             files.append(analyze_file(filepath=filepath))
-    
+
     return sorted(files, key=lambda x: x.get('modified_fs', ''), reverse=True)

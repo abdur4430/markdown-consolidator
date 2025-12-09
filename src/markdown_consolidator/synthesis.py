@@ -11,7 +11,6 @@ from typing import Any, Literal, TypedDict
 
 import yaml
 
-
 SynthesisStrategy = Literal['authority', 'comprehensive', 'canonical']
 
 
@@ -57,11 +56,11 @@ def synthesize_cluster(
     files = cluster['files']
     primary = cluster['primary_file']
     theme = cluster.get('theme', 'Consolidated')
-    
+
     # Read all files
     contents: dict[str, str] = {}
     frontmatters: dict[str, dict[str, Any]] = {}
-    
+
     for f in files:
         try:
             content = Path(f).read_text(encoding='utf-8')
@@ -76,7 +75,7 @@ def synthesize_cluster(
                 contents[f] = content
         except Exception as e:
             contents[f] = f"<!-- Error reading: {e} -->"
-    
+
     # Get modification times
     mod_times: dict[str, datetime] = {}
     for f in files:
@@ -84,17 +83,17 @@ def synthesize_cluster(
             mod_times[f] = datetime.fromtimestamp(Path(f).stat().st_mtime)
         except Exception:
             mod_times[f] = datetime.min
-    
+
     # Sort by modification time (most recent first)
     sorted_files = sorted(
         files,
         key=lambda x: mod_times.get(x, datetime.min),
         reverse=True
     )
-    
+
     # Build consolidated content
     consolidated_lines: list[str] = []
-    
+
     # Create frontmatter
     consolidated_lines.append('---')
     consolidated_lines.append(f'title: {theme}')
@@ -106,18 +105,18 @@ def synthesize_cluster(
     consolidated_lines.append(f'strategy: {strategy}')
     consolidated_lines.append('---')
     consolidated_lines.append('')
-    
+
     # Add title
     consolidated_lines.append(f'# {theme}')
     consolidated_lines.append('')
-    
+
     if strategy == 'authority':
         # Most recent file is authoritative
         primary_content = contents.get(primary, '')
         consolidated_lines.append(f'<!-- PRIMARY SOURCE: {Path(primary).name} -->')
         consolidated_lines.append(primary_content)
         consolidated_lines.append('')
-        
+
         # Add unique sections from other files
         for f in sorted_files:
             if f == primary:
@@ -130,7 +129,7 @@ def synthesize_cluster(
                 consolidated_lines.append('')
                 consolidated_lines.append(content)
                 consolidated_lines.append('')
-    
+
     elif strategy == 'comprehensive':
         # Include all content, mark conflicts
         for f in sorted_files:
@@ -145,13 +144,13 @@ def synthesize_cluster(
                 consolidated_lines.append('')
                 consolidated_lines.append(content)
                 consolidated_lines.append('')
-    
+
     elif strategy == 'canonical':
         # Only use primary file
         primary_content = contents.get(primary, '')
         consolidated_lines.append(f'<!-- CANONICAL SOURCE: {Path(primary).name} -->')
         consolidated_lines.append(primary_content)
-        
+
         # Add references to other files
         if len(files) > 1:
             consolidated_lines.append('')
@@ -162,19 +161,19 @@ def synthesize_cluster(
             for f in sorted_files:
                 if f != primary:
                     consolidated_lines.append(f'- [{Path(f).stem}]({Path(f).name})')
-    
+
     # Create output file
     safe_name = re.sub(r'[^\w\s-]', '', theme.lower()).replace(' ', '-')[:50]
     output_file = output_dir / f'{safe_name}.md'
-    
+
     # Handle name conflicts
     counter = 1
     while output_file.exists():
         output_file = output_dir / f'{safe_name}-{counter}.md'
         counter += 1
-    
+
     output_file.write_text('\n'.join(consolidated_lines))
-    
+
     return {
         'cluster_id': cluster['id'],
         'output_file': str(output_file),
@@ -211,7 +210,7 @@ def synthesize_all(
         List of synthesis results for each processed cluster.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     results: list[SynthesisResult] = []
     for cluster in clusters:
         if len(cluster['files']) >= min_files:
@@ -221,5 +220,5 @@ def synthesize_all(
                 strategy=strategy,
             )
             results.append(result)
-    
+
     return results

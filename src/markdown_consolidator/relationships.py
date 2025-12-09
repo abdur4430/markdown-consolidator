@@ -73,23 +73,23 @@ def compute_tfidf(*, documents: list[list[str]]) -> tuple[dict[str, float], list
     for doc in documents:
         for word in set(doc):
             df[word] += 1
-    
+
     n_docs = len(documents)
     idf = {word: (n_docs / freq) for word, freq in df.items()}
-    
+
     vectors: list[dict[str, float]] = []
     for doc in documents:
         tf: dict[str, int] = defaultdict(int)
         for word in doc:
             tf[word] += 1
-        
+
         max_tf = max(tf.values()) if tf else 1
         vector = {
             word: (count / max_tf) * idf.get(word, 1)
             for word, count in tf.items()
         }
         vectors.append(vector)
-    
+
     return idf, vectors
 
 
@@ -112,21 +112,21 @@ def cosine_similarity(*, vec1: dict[str, float], vec2: dict[str, float]) -> floa
     common_keys = set(vec1.keys()) & set(vec2.keys())
     if not common_keys:
         return 0.0
-    
+
     dot_product = sum(vec1[k] * vec2[k] for k in common_keys)
     norm1 = sum(v ** 2 for v in vec1.values()) ** 0.5
     norm2 = sum(v ** 2 for v in vec2.values()) ** 0.5
-    
+
     if norm1 == 0 or norm2 == 0:
         return 0.0
-    
+
     return dot_product / (norm1 * norm2)
 
 
 def analyze_content_similarity(
     *,
     inventory: dict[str, Any],
-    threshold: float = 0.3,
+    threshold: float = 0.5,
 ) -> list[Similarity]:
     """
     Analyze content similarity between files.
@@ -144,7 +144,7 @@ def analyze_content_similarity(
         List of file pairs with similarity scores.
     """
     files = [f for f in inventory['files'] if 'error' not in f]
-    
+
     documents: list[list[str]] = []
     for f in files:
         try:
@@ -155,7 +155,7 @@ def analyze_content_similarity(
             documents.append([])
 
     _, vectors = compute_tfidf(documents=documents)
-    
+
     similarities: list[Similarity] = []
     for i in range(len(files)):
         for j in range(i + 1, len(files)):
@@ -167,7 +167,7 @@ def analyze_content_similarity(
                     'similarity': round(sim, 3),
                     'type': 'content'
                 })
-    
+
     return sorted(similarities, key=lambda x: x['similarity'], reverse=True)
 
 
@@ -187,7 +187,7 @@ def analyze_section_overlaps(*, inventory: dict[str, Any]) -> list[dict[str, Any
     """
     files = [f for f in inventory['files'] if 'error' not in f]
     overlaps: list[dict[str, Any]] = []
-    
+
     section_map: dict[str, list[dict[str, str]]] = defaultdict(list)
     for f in files:
         for section in f.get('sections', []):
@@ -197,7 +197,7 @@ def analyze_section_overlaps(*, inventory: dict[str, Any]) -> list[dict[str, Any
                 'heading': section['heading'],
                 'lines': f"{section['start_line']}-{section['end_line']}"
             })
-    
+
     for fingerprint, occurrences in section_map.items():
         if len(occurrences) > 1:
             overlaps.append({
@@ -205,7 +205,7 @@ def analyze_section_overlaps(*, inventory: dict[str, Any]) -> list[dict[str, Any
                 'fingerprint': fingerprint,
                 'occurrences': occurrences
             })
-    
+
     heading_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for f in files:
         for section in f.get('sections', []):
@@ -216,7 +216,7 @@ def analyze_section_overlaps(*, inventory: dict[str, Any]) -> list[dict[str, Any
                 'lines': f"{section['start_line']}-{section['end_line']}",
                 'word_count': section['word_count']
             })
-    
+
     for heading, occurrences in heading_map.items():
         if len(occurrences) > 1:
             overlaps.append({
@@ -224,7 +224,7 @@ def analyze_section_overlaps(*, inventory: dict[str, Any]) -> list[dict[str, Any
                 'heading': heading,
                 'occurrences': occurrences
             })
-    
+
     return overlaps
 
 
@@ -243,16 +243,16 @@ def analyze_link_relationships(*, inventory: dict[str, Any]) -> dict[str, Any]:
         Dictionary with outgoing_links, incoming_links, and link_clusters.
     """
     files = [f for f in inventory['files'] if 'error' not in f]
-    
+
     outgoing: dict[str, set[str]] = defaultdict(set)
     incoming: dict[str, set[str]] = defaultdict(set)
-    
+
     name_to_path: dict[str, str] = {}
     for f in files:
         name = Path(f['path']).stem
         name_to_path[name] = f['path']
         name_to_path[Path(f['path']).name] = f['path']
-    
+
     for f in files:
         source = f['path']
         for link in f.get('links', {}).get('internal', []):
@@ -261,10 +261,10 @@ def analyze_link_relationships(*, inventory: dict[str, Any]) -> dict[str, Any]:
             if target and target != source:
                 outgoing[source].add(target)
                 incoming[target].add(source)
-    
+
     clusters: list[list[str]] = []
     visited: set[str] = set()
-    
+
     def dfs(node: str, cluster: set[str]) -> None:
         if node in visited:
             return
@@ -272,14 +272,14 @@ def analyze_link_relationships(*, inventory: dict[str, Any]) -> dict[str, Any]:
         cluster.add(node)
         for neighbor in outgoing.get(node, set()) | incoming.get(node, set()):
             dfs(neighbor, cluster)
-    
+
     for f in files:
         if f['path'] not in visited:
             cluster: set[str] = set()
             dfs(f['path'], cluster)
             if len(cluster) > 1:
                 clusters.append(list(cluster))
-    
+
     return {
         'outgoing_links': {k: list(v) for k, v in outgoing.items()},
         'incoming_links': {k: list(v) for k, v in incoming.items()},
@@ -308,7 +308,7 @@ def analyze_temporal_chains(
         List of temporal chains with files, start, end, duration.
     """
     files = [f for f in inventory['files'] if 'error' not in f]
-    
+
     file_times: list[tuple[str, datetime, str]] = []
     for f in files:
         try:
@@ -316,9 +316,9 @@ def analyze_temporal_chains(
             file_times.append((f['path'], ts, f.get('fingerprint', '')))
         except Exception:
             pass
-    
+
     file_times.sort(key=lambda x: x[1])
-    
+
     chains: list[dict[str, Any]] = []
     i = 0
     while i < len(file_times):
@@ -331,7 +331,7 @@ def analyze_temporal_chains(
                 j += 1
             else:
                 break
-        
+
         if len(chain) > 1:
             chains.append({
                 'files': [c[0] for c in chain],
@@ -341,9 +341,9 @@ def analyze_temporal_chains(
                     (chain[-1][1] - chain[0][1]).total_seconds() / 3600, 1
                 )
             })
-        
+
         i = j if j > i + 1 else i + 1
-    
+
     return chains
 
 
@@ -368,20 +368,20 @@ def detect_conflicts(
         List of conflict records with type, files, and differences.
     """
     conflicts: list[dict[str, Any]] = []
-    
+
     for sim in similarities:
         if sim['similarity'] < 0.5:
             continue
-        
+
         try:
             content1 = Path(sim['file1']).read_text(encoding='utf-8')
             content2 = Path(sim['file2']).read_text(encoding='utf-8')
         except Exception:
             continue
-        
+
         nums1 = set(re.findall(r'\b\d+(?:\.\d+)?\b', content1))
         nums2 = set(re.findall(r'\b\d+(?:\.\d+)?\b', content2))
-        
+
         if nums1 != nums2:
             diff_nums = (nums1 - nums2) | (nums2 - nums1)
             if diff_nums:
@@ -392,14 +392,14 @@ def detect_conflicts(
                     'similarity': sim['similarity'],
                     'different_values': list(diff_nums)[:10]
                 })
-    
+
     return conflicts
 
 
 def analyze_relationships(
     *,
     inventory: dict[str, Any],
-    threshold: float = 0.3,
+    threshold: float = 0.5,
 ) -> Relationships:
     """
     Perform full relationship analysis on inventory.
@@ -421,7 +421,7 @@ def analyze_relationships(
     link_relations = analyze_link_relationships(inventory=inventory)
     temporal = analyze_temporal_chains(inventory=inventory)
     conflicts = detect_conflicts(inventory=inventory, similarities=similarities)
-    
+
     return {
         'content_similarities': similarities,
         'section_overlaps': overlaps,

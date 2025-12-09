@@ -8,10 +8,10 @@ workflows.
 
 __version__ = "0.1.0"
 
-from .consolidator import consolidate, ConsolidationResult
-from .inventory import inventory_directory, analyze_file
-from .relationships import analyze_relationships
 from .clustering import cluster_files
+from .consolidator import ConsolidationResult, consolidate
+from .inventory import analyze_file, inventory_directory
+from .relationships import analyze_relationships
 from .synthesis import synthesize_cluster
 
 __all__ = [
