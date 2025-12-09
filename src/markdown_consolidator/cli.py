@@ -344,5 +344,149 @@ def synthesize_cmd() -> int:
     return 0
 
 
+def analyze_sections_cmd() -> int:
+    """
+    Entry point for mdconsolidate-analyze-sections command.
+
+    Analyzes markdown files by H2 sections and generates a manifest for review.
+
+    Returns
+    -------
+    int
+        Exit code (0 for success, 1 for error).
+    """
+    parser = argparse.ArgumentParser(
+        prog='mdconsolidate-analyze-sections',
+        description='Analyze markdown files by H2 sections and generate manifest'
+    )
+    parser.add_argument('source_dir', type=Path, help='Source directory')
+    parser.add_argument(
+        '--output', '-o',
+        type=Path, default=Path('manifest.yaml'),
+        help='Output manifest file'
+    )
+    parser.add_argument('--threshold', '-t', type=float, default=0.5, help='Clustering threshold (0-1)')
+    parser.add_argument('--summarize', action='store_true', help='Generate LLM summaries via Ollama')
+    parser.add_argument('--model', default='llama3.2:3b', help='Ollama model for summaries')
+
+    args = parser.parse_args()
+
+    if not args.source_dir.is_dir():
+        print(f"Error: {args.source_dir} is not a directory", file=sys.stderr)
+        return 1
+
+    from .chunker import MarkdownChunker
+    from .embedder import Embedder
+    from .keywords import KeywordExtractor
+    from .manifest import ManifestGenerator
+    from .summarizer import Summarizer
+    from .tree_builder import TreeBuilder
+
+    print(f"Analyzing {args.source_dir}...")
+
+    # Step 1: Chunk
+    print("  Chunking files by H2...")
+    chunker = MarkdownChunker()
+    sections = chunker.chunk_directory(args.source_dir)
+    print(f"  Found {len(sections)} sections")
+
+    if not sections:
+        print("No sections found. Exiting.")
+        return 0
+
+    # Step 2: Embed
+    print("  Generating embeddings...")
+    embedder = Embedder()
+    sections = embedder.embed_sections(sections)
+
+    # Step 3: Keywords
+    print("  Extracting keywords...")
+    extractor = KeywordExtractor()
+    sections = extractor.extract_keywords(sections)
+
+    # Step 4: Summarize (optional)
+    if args.summarize:
+        print(f"  Generating summaries with {args.model}...")
+        summarizer = Summarizer(model=args.model)
+        sections = summarizer.summarize_sections(sections)
+    else:
+        for s in sections:
+            s['summary'] = None
+
+    # Step 5: Build hierarchy
+    print("  Building document hierarchy...")
+    builder = TreeBuilder(threshold=args.threshold)
+    hierarchy = builder.build_hierarchy(sections)
+
+    # Count duplicates
+    duplicates = sum(1 for s in sections if s.get('duplicate_of'))
+
+    # Step 6: Generate manifest
+    print(f"  Writing manifest to {args.output}...")
+    generator = ManifestGenerator(source_dir=str(args.source_dir), threshold=args.threshold)
+    manifest_str = generator.generate(hierarchy, total_sections=len(sections), duplicates_removed=duplicates)
+
+    args.output.write_text(manifest_str)
+
+    print(f"\nManifest created: {args.output}")
+    print(f"  Themes: {len(hierarchy['themes'])}")
+    print(f"  Orphans: {len(hierarchy['orphans'])}")
+    print(f"  Duplicates: {duplicates}")
+    print("\nReview and edit the manifest, then run:")
+    print(f"  mdconsolidate-synthesize-manifest {args.output} ./output")
+
+    return 0
+
+
+def synthesize_manifest_cmd() -> int:
+    """
+    Entry point for mdconsolidate-synthesize-manifest command.
+
+    Creates markdown files from an approved manifest.
+
+    Returns
+    -------
+    int
+        Exit code (0 for success, 1 for error).
+    """
+    parser = argparse.ArgumentParser(
+        prog='mdconsolidate-synthesize-manifest',
+        description='Create markdown files from an approved manifest'
+    )
+    parser.add_argument('manifest_file', type=Path, help='Manifest YAML file')
+    parser.add_argument('output_dir', type=Path, help='Output directory')
+    parser.add_argument(
+        '--strategy', '-s',
+        choices=['authority', 'comprehensive', 'canonical'],
+        default='authority'
+    )
+
+    args = parser.parse_args()
+
+    if not args.manifest_file.exists():
+        print(f"Error: {args.manifest_file} not found", file=sys.stderr)
+        return 1
+
+    from .manifest import ManifestParser
+    from .synthesis import synthesize_from_manifest
+
+    print(f"Reading manifest: {args.manifest_file}")
+    parser_obj = ManifestParser()
+    manifest = parser_obj.parse_file(str(args.manifest_file))
+
+    print(f"Synthesizing to: {args.output_dir}")
+    results = synthesize_from_manifest(
+        manifest=manifest,
+        output_dir=args.output_dir,
+        strategy=args.strategy,
+    )
+
+    print(f"\nCreated {len(results)} files:")
+    for r in results:
+        print(f"  {r['output_file']}")
+
+    return 0
+
+
 if __name__ == '__main__':
     sys.exit(main())

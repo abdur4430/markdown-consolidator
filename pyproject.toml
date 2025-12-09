@@ -66,6 +66,8 @@ mdconsolidate-inventory = "markdown_consolidator.cli:inventory_cmd"
 mdconsolidate-analyze = "markdown_consolidator.cli:analyze_cmd"
 mdconsolidate-cluster = "markdown_consolidator.cli:cluster_cmd"
 mdconsolidate-synthesize = "markdown_consolidator.cli:synthesize_cmd"
+mdconsolidate-analyze-sections = "markdown_consolidator.cli:analyze_sections_cmd"
+mdconsolidate-synthesize-manifest = "markdown_consolidator.cli:synthesize_manifest_cmd"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/markdown_consolidator"]
