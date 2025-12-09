@@ -222,3 +222,118 @@ def synthesize_all(
             results.append(result)
 
     return results
+
+
+def synthesize_from_manifest(
+    *,
+    manifest: dict[str, Any],
+    output_dir: Path,
+    strategy: SynthesisStrategy = 'authority',
+) -> list[SynthesisResult]:
+    """
+    Synthesize markdown files from a parsed manifest.
+
+    Parameters
+    ----------
+    manifest : dict
+        Parsed manifest from ManifestParser.
+    output_dir : Path
+        Directory to write output files.
+    strategy : SynthesisStrategy
+        Merge strategy for section content.
+
+    Returns
+    -------
+    list[SynthesisResult]
+        List of synthesis results.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    source_dir = Path(manifest.get('source', '.'))
+    results: list[SynthesisResult] = []
+
+    # Build section content lookup
+    section_contents: dict[str, dict[str, Any]] = {}
+    _load_section_contents(source_dir, section_contents)
+
+    for theme in manifest.get('hierarchy', []):
+        for doc in theme.get('documents', []):
+            doc_name = doc['name']
+            sections = doc.get('sections', [])
+
+            # Skip duplicates unless explicitly kept
+            active_sections = [s for s in sections if not s.get('duplicate_of')]
+
+            if not active_sections:
+                continue
+
+            # Build document content
+            lines: list[str] = []
+            lines.append('---')
+            lines.append(f"title: {theme['theme']}")
+            lines.append(f"generated: {datetime.now().isoformat()}")
+            lines.append('---')
+            lines.append('')
+            lines.append(f"# {theme['theme']}")
+            lines.append('')
+
+            for section in active_sections:
+                section_id = section['id']
+                content = section_contents.get(section_id, {}).get('content', '')
+                heading = section.get('heading', 'Untitled')
+
+                lines.append(f"## {heading}")
+                lines.append('')
+                lines.append(content)
+                lines.append('')
+
+            # Write file
+            output_file = output_dir / doc_name
+            output_file.write_text('\n'.join(lines))
+
+            results.append({
+                'cluster_id': theme['theme'],
+                'output_file': str(output_file),
+                'source_files': [s['id'] for s in active_sections],
+                'primary_file': active_sections[0]['id'] if active_sections else '',
+                'strategy': strategy,
+            })
+
+    # Handle orphans with 'standalone' action
+    for orphan in manifest.get('orphans', []):
+        if orphan.get('suggested_action') == 'standalone':
+            section_id = orphan['id']
+            content = section_contents.get(section_id, {}).get('content', '')
+            heading = orphan.get('heading', 'Untitled')
+
+            lines = [
+                '---',
+                f"title: {heading}",
+                f"generated: {datetime.now().isoformat()}",
+                '---',
+                '',
+                f"# {heading}",
+                '',
+                content,
+            ]
+
+            safe_name = re.sub(r'[^\w\s-]', '', heading.lower()).replace(' ', '-')[:50]
+            output_file = output_dir / f"{safe_name}.md"
+            output_file.write_text('\n'.join(lines))
+
+    return results
+
+
+def _load_section_contents(source_dir: Path, lookup: dict[str, dict[str, Any]]) -> None:
+    """Load section contents from source files into lookup dict."""
+    from .chunker import MarkdownChunker
+
+    chunker = MarkdownChunker()
+    for md_file in source_dir.rglob('*.md'):
+        try:
+            sections = chunker.chunk_file(md_file)
+            for section in sections:
+                lookup[section['section_id']] = section
+        except Exception:
+            pass
