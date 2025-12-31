@@ -54,5 +54,19 @@ thoughts/
 research/
 plans/
 handoffs/
-.claude/config.yaml
 .env
+
+# Claude Code - ALL files should be ignored
+CLAUDE.md
+CLAUDE.md.new
+*.new
+.claude/
+
+# Other AI Assistants
+.cursor/
+.aider/
+.continue/
+.windsurf/
+.cline/
+.taskmaster/
+.aide/
