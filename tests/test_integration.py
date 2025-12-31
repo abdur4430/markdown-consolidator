@@ -262,3 +262,67 @@ def test_tree_builder_manifest_integration():
     parsed = yaml.safe_load(manifest_str)
     assert 'hierarchy' in parsed
     assert parsed['total_sections'] == 2
+
+
+def test_encapsulation_workflow_end_to_end(tmp_path):
+    """
+    Given: A directory with mixed-quality markdown sections
+    When: Running full encapsulation workflow
+    Then: Manifest shows scores and sections are properly categorized
+    """
+    import yaml
+
+    from markdown_consolidator.chunker import MarkdownChunker
+    from markdown_consolidator.embedder import Embedder
+    from markdown_consolidator.encapsulation import EncapsulationScorer
+    from markdown_consolidator.keywords import KeywordExtractor
+    from markdown_consolidator.manifest import ManifestGenerator
+    from markdown_consolidator.tree_builder import TreeBuilder
+
+    # Create test files
+    source = tmp_path / "docs"
+    source.mkdir()
+
+    (source / "auth.md").write_text("""# Authentication Guide
+
+## OAuth2 Authentication Flow
+
+This section explains the OAuth2 authentication flow in detail.
+Users are redirected to the identity provider where they authenticate.
+Upon successful authentication, an authorization code is returned.
+
+## Notes
+
+Database needs PostgreSQL. Also check the memory settings.
+Don't forget to update the firewall rules.
+""")
+
+    # Run pipeline
+    chunker = MarkdownChunker()
+    sections = chunker.chunk_directory(source)
+
+    embedder = Embedder()
+    sections = embedder.embed_sections(sections)
+
+    extractor = KeywordExtractor()
+    sections = extractor.extract_keywords(sections)
+
+    scorer = EncapsulationScorer()
+    sections = scorer.encapsulate_sections(sections)
+
+    # Verify scores
+    oauth_section = next(s for s in sections if 'OAuth' in s['heading'])
+    notes_section = next(s for s in sections if 'Notes' in s['heading'])
+
+    assert oauth_section['encapsulation_score'] > 0.6
+    assert notes_section['encapsulation_score'] < 0.5
+
+    # Build hierarchy and generate manifest
+    builder = TreeBuilder()
+    hierarchy = builder.build_hierarchy(sections)
+
+    generator = ManifestGenerator(source_dir=str(source), threshold=0.5)
+    manifest_str = generator.generate(hierarchy, total_sections=2, duplicates_removed=0)
+
+    manifest = yaml.safe_load(manifest_str)
+    assert 'encapsulation_score' in str(manifest)

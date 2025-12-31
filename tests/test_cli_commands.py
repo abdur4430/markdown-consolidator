@@ -132,3 +132,46 @@ The chunker needs at least ten words to consider this a valid section.
     assert result == 0
     content = output_manifest.read_text()
     assert 'threshold: 0.7' in content
+
+
+def test_analyze_sections_with_encapsulation(tmp_path, monkeypatch):
+    """
+    Given: A directory with markdown files
+    When: Running analyze-sections with --encapsulate flag
+    Then: Manifest contains encapsulation_score for each section
+    """
+    import yaml
+
+    from markdown_consolidator.cli import analyze_sections_cmd
+
+    # Setup test files
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "test.md").write_text(
+        "# Document\n\n"
+        "## OAuth Authentication\n\n"
+        "This explains OAuth authentication flow with enough words "
+        "to pass the minimum word count requirement for chunking.\n\n"
+        "## Notes\n\n"
+        "Random notes about various topics including databases "
+        "and memory limits that are not related to the header.\n"
+    )
+    output_manifest = tmp_path / "manifest.yaml"
+
+    monkeypatch.setattr(
+        sys, 'argv',
+        ['mdconsolidate-analyze-sections', str(source), '--encapsulate',
+         '--output', str(output_manifest)]
+    )
+
+    result = analyze_sections_cmd()
+
+    assert result == 0
+    assert output_manifest.exists()
+
+    manifest = yaml.safe_load(output_manifest.read_text())
+    # Find sections in hierarchy
+    themes = manifest['hierarchy']
+    assert len(themes) > 0
+    sections = themes[0]['documents'][0]['sections']
+    assert 'encapsulation_score' in sections[0]

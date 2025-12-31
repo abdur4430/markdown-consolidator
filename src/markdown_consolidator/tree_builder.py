@@ -228,6 +228,8 @@ class TreeBuilder:
         }
         if section.get('duplicate_of'):
             result['duplicate_of'] = section['duplicate_of']
+        if section.get('encapsulation_score') is not None:
+            result['encapsulation_score'] = round(section['encapsulation_score'], 2)
         return result
 
     def _format_sections(self, sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
