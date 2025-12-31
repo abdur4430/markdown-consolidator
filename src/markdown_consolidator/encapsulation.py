@@ -71,3 +71,31 @@ class EncapsulationScorer:
             return 0.0
 
         return float(dot_product / norms)
+
+    def encapsulate_sections(
+        self,
+        sections: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """
+        Add encapsulation scores to all sections.
+
+        Parameters
+        ----------
+        sections : list[dict[str, Any]]
+            List of section dicts with 'heading' and 'content' keys.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            Same sections with 'encapsulation_score' key added.
+        """
+        if not sections:
+            return sections
+
+        for section in sections:
+            section['encapsulation_score'] = self.score_encapsulation(
+                header=section.get('heading', ''),
+                content=section.get('content', ''),
+            )
+
+        return sections
