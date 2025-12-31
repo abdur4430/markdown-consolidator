@@ -90,3 +90,61 @@ def test_encapsulate_sections_empty_input():
     result = scorer.encapsulate_sections([])
 
     assert result == []
+
+
+def test_rechunker_splits_mixed_content(mocker):
+    """
+    Given: A section with mixed topics and poor encapsulation
+    When: Rechunking with LLM
+    Then: Returns multiple sections with better encapsulation
+    """
+    from markdown_consolidator.encapsulation import Rechunker
+
+    # Mock Ollama response
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {
+        'response': '''[
+            {"header": "Database Requirements", "content": "PostgreSQL 14 required."},
+            {"header": "Memory Configuration", "content": "Set memory limits to 4GB."}
+        ]'''
+    }
+    mock_response.raise_for_status = mocker.Mock()
+    mocker.patch('httpx.post', return_value=mock_response)
+
+    section = {
+        'section_id': 'doc/Notes',
+        'heading': 'Notes',
+        'content': 'PostgreSQL 14 required. Set memory limits to 4GB.',
+        'source_file': 'doc.md',
+        'encapsulation_score': 0.3,
+    }
+
+    rechunker = Rechunker()
+    result = rechunker.rechunk_section(section)
+
+    assert len(result) >= 2
+    assert result[0]['heading'] == 'Database Requirements'
+    assert result[1]['heading'] == 'Memory Configuration'
+
+
+def test_rechunker_skips_well_encapsulated(mocker):
+    """
+    Given: A section with good encapsulation score
+    When: Attempting to rechunk
+    Then: Returns original section unchanged
+    """
+    from markdown_consolidator.encapsulation import Rechunker
+
+    section = {
+        'section_id': 'doc/OAuth',
+        'heading': 'OAuth Authentication',
+        'content': 'OAuth authentication flow...',
+        'encapsulation_score': 0.85,
+    }
+
+    rechunker = Rechunker(threshold=0.5)
+    result = rechunker.rechunk_section(section)
+
+    # Should not call LLM, returns original
+    assert len(result) == 1
+    assert result[0] == section
