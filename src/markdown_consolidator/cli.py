@@ -373,6 +373,17 @@ def analyze_sections_cmd() -> int:
         action='store_true',
         help='Calculate encapsulation scores for each section'
     )
+    parser.add_argument(
+        '--rechunk',
+        action='store_true',
+        help='Use LLM to split poorly-encapsulated sections'
+    )
+    parser.add_argument(
+        '--rechunk-threshold',
+        type=float,
+        default=0.5,
+        help='Encapsulation score below which to rechunk (default: 0.5)'
+    )
 
     args = parser.parse_args()
 
@@ -410,11 +421,23 @@ def analyze_sections_cmd() -> int:
     sections = extractor.extract_keywords(sections)
 
     # Step 3.5: Encapsulation (optional)
-    if args.encapsulate:
+    if args.encapsulate or args.rechunk:
         from .encapsulation import EncapsulationScorer
         print("  Scoring encapsulation...")
         scorer = EncapsulationScorer()
         sections = scorer.encapsulate_sections(sections)
+
+    # Step 3.6: Rechunk (optional)
+    if args.rechunk:
+        from .encapsulation import Rechunker
+        print(f"  Rechunking sections below {args.rechunk_threshold}...")
+        rechunker = Rechunker(
+            model=args.model,
+            threshold=args.rechunk_threshold,
+        )
+        original_count = len(sections)
+        sections = rechunker.rechunk_sections(sections)
+        print(f"  Now have {len(sections)} sections (was {original_count})")
 
     # Step 4: Summarize (optional)
     if args.summarize:
