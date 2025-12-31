@@ -43,3 +43,50 @@ def test_encapsulation_scorer_low_coherence():
     )
 
     assert score < 0.5
+
+
+def test_encapsulate_sections_adds_scores():
+    """
+    Given: A list of sections with heading and content
+    When: Running encapsulate_sections
+    Then: Each section has encapsulation_score key added
+    """
+    from markdown_consolidator.encapsulation import EncapsulationScorer
+
+    sections = [
+        {
+            'section_id': 'doc1/OAuth Setup',
+            'heading': 'OAuth Setup',
+            'content': 'Configure OAuth by registering your application...',
+        },
+        {
+            'section_id': 'doc1/Notes',
+            'heading': 'Notes',
+            'content': 'Database requires PostgreSQL 14. Also check memory limits.',
+        },
+    ]
+
+    scorer = EncapsulationScorer()
+    result = scorer.encapsulate_sections(sections)
+
+    assert len(result) == 2
+    assert 'encapsulation_score' in result[0]
+    assert 'encapsulation_score' in result[1]
+    assert isinstance(result[0]['encapsulation_score'], float)
+    assert 0.0 <= result[0]['encapsulation_score'] <= 1.0
+    # Verify OAuth section scores higher than generic "Notes"
+    assert result[0]['encapsulation_score'] > result[1]['encapsulation_score']
+
+
+def test_encapsulate_sections_empty_input():
+    """
+    Given: An empty list of sections
+    When: Running encapsulate_sections
+    Then: Returns empty list without error
+    """
+    from markdown_consolidator.encapsulation import EncapsulationScorer
+
+    scorer = EncapsulationScorer()
+    result = scorer.encapsulate_sections([])
+
+    assert result == []
